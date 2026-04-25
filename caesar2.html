@@ -1,0 +1,173 @@
+<!DOCTYPE html>
+<html>
+<head>
+  <title>AES Experiment Tool</title>
+  <style>
+    body {
+      font-family: Arial;
+      background: #121212;
+      color: #e0e0e0;
+      padding: 20px;
+    }
+
+    textarea, input {
+      width: 100%;
+      background: #1e1e1e;
+      color: #fff;
+      border: 1px solid #333;
+      padding: 10px;
+      margin-bottom: 10px;
+    }
+
+    button {
+      background: #333;
+      color: white;
+      border: none;
+      padding: 10px 15px;
+      margin-right: 10px;
+      cursor: pointer;
+    }
+
+    button:hover {
+      background: #555;
+    }
+
+    .notice {
+      background: #1e1e1e;
+      border-left: 4px solid #ff9800;
+      padding: 10px;
+      margin-bottom: 15px;
+      font-size: 14px;
+    }
+  </style>
+</head>
+<body>
+
+<h2>🔐 AES Encryption Tool</h2>
+
+<div class="notice">
+⚠️ ezpez.
+</div>
+
+<textarea id="input" placeholder="Enter your message..."></textarea>
+
+<label>Secret Key:</label>
+<input type="text" id="key" maxlength="64" />
+
+<button onclick="encrypt()">Encrypt</button>
+<button onclick="decrypt()">Decrypt</button>
+<button onclick="copyText()">Copy</button>
+
+<h3>Output:</h3>
+<textarea id="output" readonly></textarea>
+
+<script>
+async function deriveKey(password, salt) {
+  const enc = new TextEncoder();
+
+  const keyMaterial = await crypto.subtle.importKey(
+    "raw",
+    enc.encode(password),
+    { name: "PBKDF2" },
+    false,
+    ["deriveKey"]
+  );
+
+  return crypto.subtle.deriveKey(
+    {
+      name: "PBKDF2",
+      salt: salt,
+      iterations: 100000,
+      hash: "SHA-256"
+    },
+    keyMaterial,
+    { name: "AES-GCM", length: 256 },
+    false,
+    ["encrypt", "decrypt"]
+  );
+}
+
+function toBase64(bytes) {
+  return btoa(String.fromCharCode(...bytes));
+}
+
+function fromBase64(str) {
+  return new Uint8Array([...atob(str)].map(c => c.charCodeAt(0)));
+}
+
+async function encrypt() {
+  const text = document.getElementById("input").value;
+  const password = document.getElementById("key").value;
+
+  if (!password) return alert("Enter a key!");
+
+  localStorage.setItem("cipherKey", password);
+
+  const enc = new TextEncoder();
+
+  const salt = crypto.getRandomValues(new Uint8Array(16));
+  const iv = crypto.getRandomValues(new Uint8Array(12));
+
+  const key = await deriveKey(password, salt);
+
+  const encrypted = await crypto.subtle.encrypt(
+    { name: "AES-GCM", iv },
+    key,
+    enc.encode(text)
+  );
+
+  const combined = new Uint8Array(
+    salt.length + iv.length + encrypted.byteLength
+  );
+
+  combined.set(salt, 0);
+  combined.set(iv, salt.length);
+  combined.set(new Uint8Array(encrypted), salt.length + iv.length);
+
+  document.getElementById("output").value = toBase64(combined);
+}
+
+async function decrypt() {
+  const input = document.getElementById("input").value;
+  const password = document.getElementById("key").value;
+
+  if (!password) return alert("Enter the correct key!");
+
+  try {
+    const data = fromBase64(input);
+
+    const salt = data.slice(0, 16);
+    const iv = data.slice(16, 28);
+    const encrypted = data.slice(28);
+
+    const key = await deriveKey(password, salt);
+
+    const decrypted = await crypto.subtle.decrypt(
+      { name: "AES-GCM", iv },
+      key,
+      encrypted
+    );
+
+    document.getElementById("output").value =
+      new TextDecoder().decode(decrypted);
+
+  } catch (e) {
+    alert("Wrong key or corrupted data!");
+  }
+}
+
+function copyText() {
+  const output = document.getElementById("output");
+  output.select();
+  document.execCommand("copy");
+  alert("Copied!");
+}
+
+window.onload = () => {
+  document.getElementById("key").value =
+    localStorage.getItem("cipherKey") || "";
+};
+</script>
+
+</body>
+</html>
